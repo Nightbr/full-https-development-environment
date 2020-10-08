@@ -1,3 +1,3 @@
 module.exports = {
-  projects: ['<rootDir>/apps/myapp'],
+  projects: ['<rootDir>/apps/myapp', '<rootDir>/apps/react-app'],
 };
