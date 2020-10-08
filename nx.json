@@ -36,6 +36,9 @@
     "react-app-e2e": {
       "tags": [],
       "implicitDependencies": ["react-app"]
+    },
+    "express-api": {
+      "tags": []
     }
   }
 }
