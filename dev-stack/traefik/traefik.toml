@@ -1,0 +1,33 @@
+# defaultEntryPoints must be at the top because it should not be in any table below
+defaultEntryPoints = ["http", "https"]
+
+[log]
+  level = "DEBUG" #DEBUG, INFO, WARN, ERROR, FATAL, PANIC
+  format = "common"
+
+[api]
+  dashboard = true
+  insecure = true
+
+[entryPoints.http]
+  address = ":80"
+  [entryPoints.http.http.redirections.entryPoint]
+    to = "https"
+    scheme = "https"
+
+[entryPoints.https]
+  address = ":443"
+
+
+[providers]
+  [providers.file]
+    filename = "/etc/traefik/traefik.config.toml"
+    watch = true
+
+[providers.docker]
+  endpoint = "unix:///var/run/docker.sock"
+  watch = true
+  exposedbydefault = false
+  [docker.tls]
+    cert = "/etc/certs/local-cert.pem"
+    key = "/etc/certs/local-key.pem"

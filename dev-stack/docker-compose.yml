@@ -1,0 +1,205 @@
+version: '3.6'
+
+networks:
+  reverseproxy:
+    driver: ${NETWORKS_DRIVER}
+  database:
+    driver: ${NETWORKS_DRIVER}
+
+volumes:
+  postgres:
+    driver: ${VOLUMES_DRIVER}
+  minio:
+    driver: ${VOLUMES_DRIVER}
+  phpmyadmin:
+    driver: ${VOLUMES_DRIVER}
+  elasticsearch:
+    driver: ${VOLUMES_DRIVER}
+
+services:
+  ### Postgres Database #########################################
+  postgres:
+    image: postgres:12
+    ports:
+      - 5432:5432
+    networks:
+      - database
+    volumes:
+    - postgres:/var/lib/postgresql/data
+    - ./database/initdb.d:/docker-entrypoint-initdb.d/
+    environment:
+      POSTGRES_DB: main_db
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+
+  ### GraphQL Engine - Hasura #########################################
+  graphql-engine:
+    image: hasura/graphql-engine:v1.3.2.cli-migrations-v2
+    depends_on:
+    - "postgres"
+    extra_hosts:
+      - "dockerhost:172.17.0.1"
+    networks:
+      - reverseproxy
+      - database
+    volumes:
+      - ../.hasura/migrations:/hasura-migrations
+      - ../.hasura/metadata:/hasura-metadata
+    environment:
+      HASURA_GRAPHQL_DATABASE_URL: postgres://root:root@postgres:5432/main_db
+      ## enable the console served by server
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true" # set to "false" to disable console
+      ## enable debugging mode. It is recommended to disable this in production
+      HASURA_GRAPHQL_DEV_MODE: "true"
+      HASURA_GRAPHQL_ENABLED_LOG_TYPES: startup, http-log, webhook-log, websocket-log, query-log
+      ## Secure secret
+      HASURA_GRAPHQL_ADMIN_SECRET: myadminsecretkey
+      HASURA_GRAPHQL_CORS_DOMAIN: "https://dev.local:4200, https://*.dev.local"
+      ## Auth system integration - see auth-connector
+      #HASURA_GRAPHQL_AUTH_HOOK: http://auth-connector:3000
+      HASURA_GRAPHQL_AUTH_HOOK: http://dockerhost:3333/auth
+      #HASURA_GRAPHQL_AUTH_HOOK_MODE: GET
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.graphql.rule=Host(`graphql.${HOSTNAME}`)
+      - traefik.http.routers.graphql.entrypoints=http, https
+      - traefik.http.middlewares.sslheader.headers.customrequestheaders.X-Forwarded-Proto = https
+      - traefik.http.routers.graphql.tls=true
+      - traefik.http.routers.graphql.service=graphql
+      - traefik.http.services.graphql.loadbalancer.server.port=8080
+      - traefik.docker.network=${COMPOSE_PROJECT_NAME}_reverseproxy
+
+  ### Auth connector - Hasura/Keycloak #########################################
+  ## /!\ Not working so far...
+  auth-connector:
+    image: httpsomkar/keycloak-hasura-connector:latest
+    networks:
+      - reverseproxy
+    environment:
+      KEYCLOAK_CLIENT_ID: hasura-keycloak-connector # Keycloak backend client id from the keycloak setup.
+      KEYCLOAK_SERVER_URL: http://keycloak:8080/auth # Keycloak url in term of http://keycloak.COMPANY.com/auth
+      KEYCLOAK_REALM: gettr # Default to master if any new create change to it
+      KEYCLOAK_SECRET: 7307895f-56ce-404f-840c-437a19ccc78e # Secret copied from the backend client -> Credentials
+      ANONYMOUS_ROLE: "anonymous" # (optional) Use this variable to set anonymous role name for unauthorized users as shown in the documentation: https://docs.hasura.io/1.0/graphql/manual/auth/authorization/common-roles-auth-examples.html#anonymous-not-logged-in-users
+      USER_ID_FIELD: "sub" #The name of the token field that will be mapped to X-Hasura-User-Id
+      KEYCLOAK_DEBUG: "true" # If testing enable mention this file
+
+  ### Auth service - keycloak #########################################
+  keycloak:
+    image: quay.io/keycloak/keycloak:11.0.2
+    networks:
+      - reverseproxy
+    environment:
+      KEYCLOAK_USER: admin
+      KEYCLOAK_PASSWORD: admin
+      DB_VENDOR: h2
+      PROXY_ADDRESS_FORWARDING: "true"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.keycloak.rule=Host(`auth.${HOSTNAME}`)
+      - traefik.http.routers.keycloak.entrypoints=http, https
+      - traefik.http.routers.keycloak.tls=true
+      - traefik.http.routers.keycloak.service=keycloak
+      - traefik.http.services.keycloak.loadbalancer.server.port=8080
+      - traefik.docker.network=${COMPOSE_PROJECT_NAME}_reverseproxy
+
+  ### Router TRAEFIK #########################################
+  traefik:
+    build:
+      context: ./traefik
+    command: --docker \
+      --logLevel=DEBUG --accessLogsFile=/dev/stdout --providers.docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./certs:/etc/certs:ro
+      - ./traefik/traefik.toml:/etc/traefik/traefik.toml
+      - ./traefik/traefik.config.toml:/etc/traefik/traefik.config.toml
+    ports:
+      - '${TRAEFIK_HOST_HTTP_PORT}:80'
+      - '${TRAEFIK_HOST_HTTPS_PORT}:443'
+    networks:
+      - reverseproxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.frontrouter.rule=Host(`traefik.${HOSTNAME}`)
+      - traefik.http.routers.frontrouter.entrypoints=http, https
+      - traefik.http.routers.frontrouter.tls=true
+      - traefik.http.routers.frontrouter.service=frontrouter
+      - traefik.http.services.frontrouter.loadbalancer.server.port=8080
+      - traefik.docker.network=${COMPOSE_PROJECT_NAME}_reverseproxy
+
+  ### mkdocs ###############################################
+  mkdocs:
+    build:
+      context: ./mkdocs
+    volumes:
+      - ../:/docs
+    tty: true
+    networks:
+      - reverseproxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.mkdocs.rule=Host(`docs.${HOSTNAME}`)
+      - traefik.http.routers.mkdocs.entrypoints=http, https
+      - traefik.http.routers.mkdocs.tls=true
+      - traefik.http.routers.mkdocs.service=mkdocs
+      - traefik.http.services.mkdocs.loadbalancer.server.port=8000
+      - traefik.docker.network=${COMPOSE_PROJECT_NAME}_reverseproxy
+
+  ### Minio ################################################
+  minio:
+    build: ./minio
+    volumes:
+      - ${DATA_PATH_HOST}/minio/data:/export
+      - ${DATA_PATH_HOST}/minio/config:/root/.minio
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.media.rule=Host(`media.${HOSTNAME}`)
+      - traefik.http.routers.media.entrypoints=http, https
+      - traefik.http.routers.media.tls=true
+      - traefik.http.routers.media.service=media
+      - traefik.http.services.media.loadbalancer.server.port=9000
+      - traefik.docker.network=${COMPOSE_PROJECT_NAME}_reverseproxy
+    environment:
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+    networks:
+      - reverseproxy
+
+  ### MailDev ##############################################
+  maildev:
+    image: djfarrelly/maildev
+    command: bin/maildev --web 80 --smtp 25 --hide-extensions STARTTLS
+    # We need to disable TLS, to avoid a bug with symfony Mailer => https://github.com/symfony/symfony/pull/34172 & https://github.com/maildev/maildev/issues/274
+    ports:
+      - '${MAILDEV_SMTP_PORT}:25'
+    networks:
+      - reverseproxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.mail.rule=Host(`mail.${HOSTNAME}`)
+      - traefik.http.routers.mail.entrypoints=http, https
+      - traefik.http.routers.mail.tls=true
+      - traefik.http.routers.mail.service=mail
+      - traefik.http.services.mail.loadbalancer.server.port=80
+      - traefik.docker.network=${COMPOSE_PROJECT_NAME}_reverseproxy
+
+  ### Portainer ################################################
+  portainer:
+    image: portainer/portainer
+    command: -H unix:///var/run/docker.sock --no-auth
+    volumes:
+      - ${DATA_PATH_HOST}/portainer_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - 'dockerhost:${DOCKER_HOST_IP}'
+    networks:
+      - reverseproxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.portainer.rule=Host(`portainer.${HOSTNAME}`)
+      - traefik.http.routers.portainer.entrypoints=http, https
+      - traefik.http.routers.portainer.tls=true
+      - traefik.http.routers.portainer.service=portainer
+      - traefik.http.services.portainer.loadbalancer.server.port=9000
+      - traefik.docker.network=${COMPOSE_PROJECT_NAME}_reverseproxy
