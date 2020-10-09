@@ -12,8 +12,7 @@ SUBDOMAINS = docs \
              mail \
              media \
              portainer \
-             graphql \
-             auth
+             graphql
 endif
 ifndef DATABASE
 DATABASE = postgres
@@ -25,9 +24,7 @@ INFRA = traefik \
         mkdocs \
         portainer \
         ${DATABASE} \
-        graphql-engine \
-        keycloak \
-        auth-connector
+        graphql-engine
 endif
 
 

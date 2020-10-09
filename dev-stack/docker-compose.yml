@@ -42,9 +42,9 @@ services:
     networks:
       - reverseproxy
       - database
-    volumes:
-      - ../.hasura/migrations:/hasura-migrations
-      - ../.hasura/metadata:/hasura-metadata
+    #volumes:
+    #  - ../.hasura/migrations:/hasura-migrations
+    #  - ../.hasura/metadata:/hasura-metadata
     environment:
       HASURA_GRAPHQL_DATABASE_URL: postgres://root:root@postgres:5432/main_db
       ## enable the console served by server
@@ -57,7 +57,7 @@ services:
       HASURA_GRAPHQL_CORS_DOMAIN: "https://dev.local:4200, https://*.dev.local"
       ## Auth system integration - see auth-connector
       #HASURA_GRAPHQL_AUTH_HOOK: http://auth-connector:3000
-      HASURA_GRAPHQL_AUTH_HOOK: http://dockerhost:3333/auth
+      #HASURA_GRAPHQL_AUTH_HOOK: http://dockerhost:3333/auth
       #HASURA_GRAPHQL_AUTH_HOOK_MODE: GET
     labels:
       - traefik.enable=true
@@ -67,40 +67,6 @@ services:
       - traefik.http.routers.graphql.tls=true
       - traefik.http.routers.graphql.service=graphql
       - traefik.http.services.graphql.loadbalancer.server.port=8080
-      - traefik.docker.network=${COMPOSE_PROJECT_NAME}_reverseproxy
-
-  ### Auth connector - Hasura/Keycloak #########################################
-  ## /!\ Not working so far...
-  auth-connector:
-    image: httpsomkar/keycloak-hasura-connector:latest
-    networks:
-      - reverseproxy
-    environment:
-      KEYCLOAK_CLIENT_ID: hasura-keycloak-connector # Keycloak backend client id from the keycloak setup.
-      KEYCLOAK_SERVER_URL: http://keycloak:8080/auth # Keycloak url in term of http://keycloak.COMPANY.com/auth
-      KEYCLOAK_REALM: gettr # Default to master if any new create change to it
-      KEYCLOAK_SECRET: 7307895f-56ce-404f-840c-437a19ccc78e # Secret copied from the backend client -> Credentials
-      ANONYMOUS_ROLE: "anonymous" # (optional) Use this variable to set anonymous role name for unauthorized users as shown in the documentation: https://docs.hasura.io/1.0/graphql/manual/auth/authorization/common-roles-auth-examples.html#anonymous-not-logged-in-users
-      USER_ID_FIELD: "sub" #The name of the token field that will be mapped to X-Hasura-User-Id
-      KEYCLOAK_DEBUG: "true" # If testing enable mention this file
-
-  ### Auth service - keycloak #########################################
-  keycloak:
-    image: quay.io/keycloak/keycloak:11.0.2
-    networks:
-      - reverseproxy
-    environment:
-      KEYCLOAK_USER: admin
-      KEYCLOAK_PASSWORD: admin
-      DB_VENDOR: h2
-      PROXY_ADDRESS_FORWARDING: "true"
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.keycloak.rule=Host(`auth.${HOSTNAME}`)
-      - traefik.http.routers.keycloak.entrypoints=http, https
-      - traefik.http.routers.keycloak.tls=true
-      - traefik.http.routers.keycloak.service=keycloak
-      - traefik.http.services.keycloak.loadbalancer.server.port=8080
       - traefik.docker.network=${COMPOSE_PROJECT_NAME}_reverseproxy
 
   ### Router TRAEFIK #########################################

@@ -1,0 +1,49 @@
+site_name: Dev Docs
+
+# Repository
+repo_name: ' Nightbr/full-https-development-environment'
+repo_url: https://github.com/Nightbr/full-https-development-environment
+
+copyright: '&copy; MyOrg - 2020 and beyond'
+
+docs_dir: 'docs'
+dev_addr: 0.0.0.0:8000
+
+site_dir: 'public'
+
+theme:
+  name: 'material'
+  language: 'en'
+  #logo: 'assets/icon-square.png'
+  #favicon: 'assets/icon-square.png'
+  palette:
+    primary: 'blue'
+    accent: 'orange'
+markdown_extensions:
+  - admonition
+  - codehilite
+  - pymdownx.arithmatex
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.critic
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_generator: !!python/name:pymdownx.emoji.to_svg
+  - pymdownx.inlinehilite
+  - pymdownx.magiclink
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+  - toc:
+      permalink: true
+
+extra_javascript:
+  - 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-MML-AM_CHTML'
+
+plugins:
+  - search
+  - awesome-pages
